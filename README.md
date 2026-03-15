@@ -25,15 +25,28 @@ Run Claude Code, Codex, Cursor, and OpenCode side by side with automatic sub-age
 ## Build & run
 
 ```bash
-# Build release and launch as macOS .app bundle
-bash scripts/launch-opensquirrel-app.sh
-
-# Or build directly
 cargo build --release
 ./target/release/opensquirrel
 ```
 
-Requires Rust toolchain and macOS (Metal GPU). The launch script creates `dist/OpenSquirrel.app` with the proper icon and shell environment.
+Requires Rust toolchain and macOS (Metal GPU).
+
+To run as a proper macOS `.app` bundle with the squirrel icon:
+
+```bash
+# Build
+cargo build --release
+
+# Create .app bundle
+mkdir -p dist/OpenSquirrel.app/Contents/{MacOS,Resources}
+cp target/release/opensquirrel dist/OpenSquirrel.app/Contents/MacOS/OpenSquirrel
+cp assets/OpenSquirrel.icns dist/OpenSquirrel.app/Contents/Resources/
+
+# Launch
+open dist/OpenSquirrel.app
+```
+
+Note: macOS `.app` bundles don't inherit your shell PATH. If agents like `claude` or `npx` aren't found, run the binary directly instead of via the `.app` bundle.
 
 ## Keybinds
 
