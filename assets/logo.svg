@@ -1,0 +1,102 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="fur" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#e8913a"/>
+      <stop offset="60%" stop-color="#c46a1a"/>
+      <stop offset="100%" stop-color="#8b4513"/>
+    </linearGradient>
+    <linearGradient id="tail" x1="0" y1="0" x2="0.5" y2="1">
+      <stop offset="0%" stop-color="#f0a050"/>
+      <stop offset="50%" stop-color="#d4792a"/>
+      <stop offset="100%" stop-color="#a05520"/>
+    </linearGradient>
+    <linearGradient id="belly" x1="0.5" y1="0" x2="0.5" y2="1">
+      <stop offset="0%" stop-color="#f5d0a0"/>
+      <stop offset="100%" stop-color="#e8b878"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0%" stop-color="#f0a050" stop-opacity="0.15"/>
+      <stop offset="100%" stop-color="#f0a050" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <circle cx="64" cy="64" r="62" fill="url(#glow)"/>
+
+  <g transform="translate(10, 0)">
+    <!-- Tail (big fluffy S-curve) -->
+    <path d="M14 108 C0 90, -4 66, 4 46 C12 26, 26 16, 38 22
+             C50 28, 46 42, 38 54 C30 66, 18 80, 16 98 Z"
+          fill="url(#tail)" opacity="0.95"/>
+    <path d="M10 86 C4 72, 2 54, 10 40 C18 28, 30 22, 36 28
+             C40 34, 36 46, 30 56 C24 66, 16 78, 14 88 Z"
+          fill="#f0a050" opacity="0.4"/>
+
+    <!-- Body -->
+    <path d="M44 122 C32 122, 24 112, 24 100 C24 86, 32 72, 44 66
+             C56 60, 74 62, 80 74 C86 86, 82 112, 72 122 Z"
+          fill="url(#fur)"/>
+
+    <!-- Belly patch -->
+    <path d="M48 118 C38 114, 32 104, 36 92 C40 82, 46 74, 54 72
+             C62 70, 68 76, 68 84 C68 96, 62 114, 54 118 Z"
+          fill="url(#belly)" opacity="0.7"/>
+
+    <!-- Head -->
+    <circle cx="74" cy="42" r="24" fill="url(#fur)"/>
+
+    <!-- Face lighter area -->
+    <ellipse cx="76" cy="48" rx="16" ry="13" fill="#e0a060" opacity="0.5"/>
+
+    <!-- Ear left -->
+    <path d="M54 26 L48 4 L62 20 Z" fill="url(#fur)"/>
+    <path d="M56 24 L50 8 L61 20 Z" fill="#f0a050" opacity="0.6"/>
+
+    <!-- Ear right -->
+    <path d="M88 22 L94 0 L98 18 Z" fill="url(#fur)"/>
+    <path d="M90 20 L94 4 L96 18 Z" fill="#f0a050" opacity="0.6"/>
+
+    <!-- Eye left -->
+    <ellipse cx="66" cy="38" rx="6.5" ry="7" fill="#1a1a2e"/>
+    <circle cx="68.5" cy="35.5" r="2.6" fill="white" opacity="0.9"/>
+    <circle cx="64" cy="40" r="1" fill="white" opacity="0.5"/>
+
+    <!-- Eye right -->
+    <ellipse cx="84" cy="38" rx="6" ry="6.5" fill="#1a1a2e"/>
+    <circle cx="86.5" cy="35.5" r="2.3" fill="white" opacity="0.9"/>
+    <circle cx="82" cy="40" r="0.9" fill="white" opacity="0.5"/>
+
+    <!-- Nose -->
+    <ellipse cx="78" cy="52" rx="4" ry="3" fill="#3a2010"/>
+
+    <!-- Mouth -->
+    <path d="M73 55 Q78 60 83 55" fill="none" stroke="#5a3520" stroke-width="1.2" stroke-linecap="round"/>
+
+    <!-- Whiskers -->
+    <line x1="70" y1="50" x2="48" y2="47" stroke="#c09060" stroke-width="0.8" opacity="0.5"/>
+    <line x1="70" y1="52" x2="46" y2="53" stroke="#c09060" stroke-width="0.8" opacity="0.5"/>
+    <line x1="86" y1="50" x2="108" y2="46" stroke="#c09060" stroke-width="0.8" opacity="0.5"/>
+    <line x1="86" y1="52" x2="110" y2="52" stroke="#c09060" stroke-width="0.8" opacity="0.5"/>
+
+    <!-- Front paws -->
+    <ellipse cx="50" cy="96" rx="8" ry="5" fill="#c46a1a" transform="rotate(-15 50 96)"/>
+    <ellipse cx="72" cy="92" rx="7" ry="4.5" fill="#c46a1a" transform="rotate(10 72 92)"/>
+
+    <!-- Terminal block -->
+    <rect x="44" y="84" width="28" height="18" rx="4" fill="#1e1e2e" opacity="0.85"/>
+    <rect x="48" y="88" width="11" height="2" rx="1" fill="#7dd3fc" opacity="0.9"/>
+    <rect x="48" y="92.5" width="16" height="2" rx="1" fill="#4ade80" opacity="0.7"/>
+    <rect x="48" y="97" width="8" height="2" rx="1" fill="#a78bfa" opacity="0.6"/>
+
+    <!-- Feet -->
+    <ellipse cx="38" cy="124" rx="9" ry="4" fill="#a05520"/>
+    <ellipse cx="66" cy="124" rx="8.5" ry="4" fill="#a05520"/>
+
+    <!-- Toes -->
+    <circle cx="32" cy="124" r="1.5" fill="#8b4513"/>
+    <circle cx="36" cy="123" r="1.5" fill="#8b4513"/>
+    <circle cx="40" cy="123" r="1.5" fill="#8b4513"/>
+    <circle cx="60" cy="123" r="1.5" fill="#8b4513"/>
+    <circle cx="64" cy="123" r="1.5" fill="#8b4513"/>
+    <circle cx="68" cy="123" r="1.5" fill="#8b4513"/>
+  </g>
+</svg>
