@@ -2615,6 +2615,19 @@ impl OpenSquirrel {
                             s.dir_filter.pop();
                             s.dir_cursor = 0;
                             did_delete = true;
+                        } else {
+                            // Empty filter + backspace = go up to parent directory
+                            let parent = std::path::Path::new(&s.selected_dir)
+                                .parent()
+                                .map(|p| p.display().to_string());
+                            if let Some(parent_dir) = parent {
+                                if !parent_dir.is_empty() {
+                                    s.selected_dir = parent_dir.clone();
+                                    s.dir_entries = list_subdirs(&parent_dir);
+                                    s.dir_cursor = 0;
+                                    did_delete = true;
+                                }
+                            }
                         }
                     } else if s.step == SetupStep::Model {
                         if s.custom_mode {
@@ -4792,7 +4805,7 @@ impl OpenSquirrel {
                         .child(div().text_size(self.s(11.0)).text_color(t.text_muted()).child("cwd:"))
                         .child(div().text_size(self.s(12.0)).text_color(t.text()).child(current_display))
                         .child(div().flex_grow())
-                        .child(div().text_size(self.s(9.0)).text_color(t.text_faint()).child("Enter=open  Tab=use this dir"))
+                        .child(div().text_size(self.s(9.0)).text_color(t.text_faint()).child("Enter=open  ⌫=parent  Tab=confirm"))
                 );
                 // Filter bar
                 w = w.child(
