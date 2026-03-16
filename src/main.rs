@@ -5741,12 +5741,14 @@ fn launch_remote_tmux_session(
     workdir: Option<&str>,
 ) -> anyhow::Result<()> {
     let remote_command = build_remote_wrapped_command(runtime, args, prompt, workdir);
+    // Wrap in a login shell so PATH includes user-installed tools (claude, codex, etc.)
+    let login_wrapped = format!("bash -lc {}", shell_escape(&remote_command));
     let script = format!(
         "tmux kill-session -t {session} >/dev/null 2>&1 || true; \
          tmux new-session -d -s {session} {command}; \
          tmux set-option -t {session} remain-on-exit on >/dev/null 2>&1",
         session = shell_escape(session_name),
-        command = shell_escape(&remote_command),
+        command = shell_escape(&login_wrapped),
     );
     let output = run_ssh_script(destination, &script)?;
     if output.status.success() {
@@ -5824,18 +5826,16 @@ fn stream_remote_tmux_session(
 }
 
 fn build_mcp_config_args(mcps: &[McpDef]) -> Vec<String> {
-    let mut args = Vec::new();
+    if mcps.is_empty() { return Vec::new(); }
+    let mut servers = serde_json::Map::new();
     for mcp in mcps {
-        let server_json = serde_json::json!({
-            mcp.name.clone(): {
-                "command": mcp.command,
-                "args": mcp.args,
-            }
-        });
-        args.push("--mcp-config".into());
-        args.push(server_json.to_string());
+        servers.insert(mcp.name.clone(), serde_json::json!({
+            "command": mcp.command,
+            "args": mcp.args,
+        }));
     }
-    args
+    let config = serde_json::json!({ "mcpServers": servers });
+    vec!["--mcp-config".into(), config.to_string()]
 }
 
 fn agent_thread(

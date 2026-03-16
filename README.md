@@ -1,6 +1,10 @@
-# OpenSquirrel
+<p align="center">
+  <img src="assets/logo.png" width="128" alt="OpenSquirrel">
+</p>
 
-Native, GPU-rendered control plane for AI coding agents. Rust + GPUI. No Electron.
+<h1 align="center">OpenSquirrel</h1>
+
+<p align="center">Native, GPU-rendered control plane for AI coding agents. Rust + GPUI. No Electron.</p>
 
 Run Claude Code, Codex, Cursor, and OpenCode side by side with automatic sub-agent delegation, remote machine targeting via SSH, and persistent multi-turn sessions.
 
