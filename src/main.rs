@@ -15,6 +15,24 @@ use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextPar
 // Voice input is disabled for v1 ship. Set to true to re-enable.
 const VOICE_ENABLED: bool = false;
 
+fn list_home_dirs() -> Vec<String> {
+    let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
+    let mut dirs = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(&home) {
+        for entry in entries.flatten() {
+            if entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false) {
+                let name = entry.file_name().to_string_lossy().to_string();
+                if !name.starts_with('.') {
+                    dirs.push(entry.path().display().to_string());
+                }
+            }
+        }
+    }
+    dirs.sort();
+    dirs.insert(0, home);
+    dirs
+}
+
 // ── OpenRouter API ──────────────────────────────────────────────
 
 fn fetch_opencode_model_list() -> Vec<ModelOption> {
@@ -1202,7 +1220,7 @@ impl AgentState {
 // ── Setup wizard state ──────────────────────────────────────────
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum SetupStep { Machine, Runtime, Model, Mcps, Confirm }
+enum SetupStep { Machine, Directory, Runtime, Model, Mcps, Confirm }
 
 struct SetupState {
     step: SetupStep,
@@ -1210,15 +1228,19 @@ struct SetupState {
     selected_runtime: String,
     model_cursor: usize,
     selected_model: String,
-    model_filter: String, // fuzzy search input for model list
+    model_filter: String,
     machine_cursor: usize,
     selected_machine: String,
+    // Directory selection
+    dir_filter: String,
+    dir_entries: Vec<String>,
+    dir_cursor: usize,
+    selected_dir: String,
     mcp_cursor: usize,
-    selected_mcps: Vec<bool>, // parallel to config.mcps
-    editing_agent: Option<usize>, // Some(idx) = changing existing agent, None = new agent
-    // Custom endpoint fields
-    custom_mode: bool,         // true = editing custom endpoint fields instead of model list
-    custom_field: usize,       // 0=base_url, 1=api_key, 2=model_id
+    selected_mcps: Vec<bool>,
+    editing_agent: Option<usize>,
+    custom_mode: bool,
+    custom_field: usize,
     custom_base_url: String,
     custom_api_key: String,
     custom_model_id: String,
@@ -1768,6 +1790,15 @@ impl OpenSquirrel {
 
     // ── Agent lifecycle ─────────────────────────────────────────
 
+    fn filter_dirs(entries: &[String], filter: &str) -> Vec<String> {
+        if filter.is_empty() { return entries.to_vec(); }
+        let q = filter.to_lowercase();
+        entries.iter()
+            .filter(|d| d.to_lowercase().contains(&q))
+            .cloned()
+            .collect()
+    }
+
     fn selected_mcp_defs(&self) -> Vec<McpDef> {
         self.config.mcps.iter()
             .filter(|m| m.global || self.config.last_mcps.contains(&m.name))
@@ -2228,6 +2259,10 @@ impl OpenSquirrel {
             selected_model: last_model,
             machine_cursor,
             selected_machine: self.config.machines.get(machine_cursor).map(|m| m.name.clone()).unwrap_or_else(|| "local".into()),
+            dir_filter: String::new(),
+            dir_entries: list_home_dirs(),
+            dir_cursor: 0,
+            selected_dir: std::env::current_dir().map(|p| p.display().to_string()).unwrap_or_default(),
             mcp_cursor: 0,
             selected_mcps,
             model_filter: String::new(),
@@ -2269,6 +2304,10 @@ impl OpenSquirrel {
             selected_model: model_id,
             machine_cursor,
             selected_machine: self.config.machines.get(machine_cursor).map(|m| m.name.clone()).unwrap_or_else(|| "local".into()),
+            dir_filter: String::new(),
+            dir_entries: list_home_dirs(),
+            dir_cursor: 0,
+            selected_dir: self.agents[idx].working_dir.clone(),
             mcp_cursor: 0,
             selected_mcps,
             model_filter: String::new(),
@@ -2339,15 +2378,16 @@ impl OpenSquirrel {
                         None,
                         cx,
                     );
-                    // create_agent pushes to end, move it to the right spot
                     if n > edit_idx {
                         let last = self.agents.pop().unwrap();
                         self.agents.insert(edit_idx, last);
                     }
+                    if !setup.selected_dir.is_empty() {
+                        self.agents[edit_idx].working_dir = setup.selected_dir.clone();
+                    }
                     self.set_focus(edit_idx);
                 }
             } else {
-                // New agent
                 let n = self.agents.len();
                 let group = self.current_group_name().to_string();
                 self.create_agent_with_role(
@@ -2362,6 +2402,9 @@ impl OpenSquirrel {
                     None,
                     cx,
                 );
+                if !setup.selected_dir.is_empty() {
+                    self.agents[n].working_dir = setup.selected_dir.clone();
+                }
                 self.set_focus(n);
             }
 
@@ -2547,7 +2590,13 @@ impl OpenSquirrel {
             Mode::Setup => {
                 let mut did_delete = false;
                 if let Some(ref mut s) = self.setup {
-                    if s.step == SetupStep::Model {
+                    if s.step == SetupStep::Directory {
+                        if !s.dir_filter.is_empty() {
+                            s.dir_filter.pop();
+                            s.dir_cursor = 0;
+                            did_delete = true;
+                        }
+                    } else if s.step == SetupStep::Model {
                         if s.custom_mode {
                             let has_text = match s.custom_field {
                                 0 => !s.custom_base_url.is_empty(),
@@ -2605,16 +2654,25 @@ impl OpenSquirrel {
                     Mode::Search => { self.search_query.push_str(ch); self.rebuild_search(); cx.notify(); }
                     Mode::Setup => {
                         if let Some(ref mut s) = self.setup {
-                            if s.custom_mode {
-                                match s.custom_field {
-                                    0 => s.custom_base_url.push_str(ch),
-                                    1 => s.custom_api_key.push_str(ch),
-                                    2 => s.custom_model_id.push_str(ch),
-                                    _ => {}
+                            match s.step {
+                                SetupStep::Directory => {
+                                    s.dir_filter.push_str(ch);
+                                    s.dir_cursor = 0;
                                 }
-                            } else {
-                                s.model_filter.push_str(ch);
-                                s.model_cursor = 0;
+                                SetupStep::Model => {
+                                    if s.custom_mode {
+                                        match s.custom_field {
+                                            0 => s.custom_base_url.push_str(ch),
+                                            1 => s.custom_api_key.push_str(ch),
+                                            2 => s.custom_model_id.push_str(ch),
+                                            _ => {}
+                                        }
+                                    } else {
+                                        s.model_filter.push_str(ch);
+                                        s.model_cursor = 0;
+                                    }
+                                }
+                                _ => {}
                             }
                         }
                         cx.notify();
@@ -2640,7 +2698,20 @@ impl OpenSquirrel {
                     self.setup.as_ref().map(|s| s.machine_cursor).unwrap_or(0)
                 ).map(|m| m.name.clone()).unwrap_or_else(|| "local".into());
                 if let Some(ref mut s) = self.setup {
-                    s.selected_machine = machine_name;
+                    s.selected_machine = machine_name.clone();
+                    // Refresh dir listing for the selected machine
+                    if machine_name == "local" {
+                        s.dir_entries = list_home_dirs();
+                    }
+                    s.step = SetupStep::Directory;
+                }
+            }
+            SetupStep::Directory => {
+                if let Some(ref mut s) = self.setup {
+                    let filtered = Self::filter_dirs(&s.dir_entries, &s.dir_filter);
+                    if let Some(dir) = filtered.get(s.dir_cursor) {
+                        s.selected_dir = dir.clone();
+                    }
                     s.step = SetupStep::Runtime;
                 }
             }
@@ -2709,7 +2780,8 @@ impl OpenSquirrel {
         if let Some(ref mut s) = self.setup {
             match s.step {
                 SetupStep::Machine => {} // can't go back
-                SetupStep::Runtime => { s.step = SetupStep::Machine; }
+                SetupStep::Directory => { s.step = SetupStep::Machine; }
+                SetupStep::Runtime => { s.step = SetupStep::Directory; }
                 SetupStep::Model => { s.step = SetupStep::Runtime; }
                 SetupStep::Mcps => { s.step = SetupStep::Model; }
                 SetupStep::Confirm => { s.step = SetupStep::Mcps; }
@@ -2911,6 +2983,7 @@ impl OpenSquirrel {
                             }
                         }
                         SetupStep::Machine => { s.machine_cursor = s.machine_cursor.saturating_sub(1); }
+                        SetupStep::Directory => { s.dir_cursor = s.dir_cursor.saturating_sub(1); }
                         SetupStep::Mcps => { s.mcp_cursor = s.mcp_cursor.saturating_sub(1); }
                         _ => {}
                     }
@@ -2948,6 +3021,11 @@ impl OpenSquirrel {
                             count.saturating_sub(1)
                         }
                         SetupStep::Machine => self.config.machines.len().saturating_sub(1),
+                        SetupStep::Directory => {
+                            let filter = self.setup.as_ref().map(|s| s.dir_filter.clone()).unwrap_or_default();
+                            let entries = self.setup.as_ref().map(|s| s.dir_entries.clone()).unwrap_or_default();
+                            Self::filter_dirs(&entries, &filter).len().saturating_sub(1)
+                        }
                         SetupStep::Mcps => self.config.mcps.len().saturating_sub(1),
                         SetupStep::Confirm => 0,
                     };
@@ -2962,6 +3040,7 @@ impl OpenSquirrel {
                                 }
                             }
                             SetupStep::Machine => s.machine_cursor = (s.machine_cursor + 1).min(max),
+                            SetupStep::Directory => s.dir_cursor = (s.dir_cursor + 1).min(max),
                             SetupStep::Mcps => s.mcp_cursor = (s.mcp_cursor + 1).min(max),
                             _ => {}
                         }
@@ -4479,9 +4558,10 @@ impl OpenSquirrel {
 
         // Step indicator
         let steps = [
+            ("Machine", SetupStep::Machine),
+            ("Directory", SetupStep::Directory),
             ("Runtime", SetupStep::Runtime),
             ("Model", SetupStep::Model),
-            ("Machine", SetupStep::Machine),
             ("MCPs", SetupStep::Mcps),
             ("Confirm", SetupStep::Confirm),
         ];
@@ -4681,6 +4761,51 @@ impl OpenSquirrel {
                     );
                 }
             }
+            SetupStep::Directory => {
+                let filtered = Self::filter_dirs(&setup.dir_entries, &setup.dir_filter);
+                // Filter bar
+                w = w.child(
+                    div().w_full().px(self.s(14.0)).py(self.s(8.0)).border_b_1().border_color(t.palette_border())
+                        .flex().items_center().gap(self.s(8.0))
+                        .child(div().text_size(self.s(12.0)).text_color(t.blue()).child("dir:"))
+                        .child(div().text_size(self.s(13.0)).text_color(t.text()).child(
+                            if setup.dir_filter.is_empty() {
+                                "type to filter directories...".to_string()
+                            } else {
+                                format!("{}│", setup.dir_filter)
+                            }
+                        ))
+                        .child(div().flex_grow())
+                        .child(div().text_size(self.s(10.0)).text_color(t.text_faint()).child(
+                            format!("{} dirs", filtered.len())
+                        ))
+                );
+                let visible_count = 15;
+                let start = if setup.dir_cursor >= visible_count { setup.dir_cursor - visible_count + 1 } else { 0 };
+                let end = (start + visible_count).min(filtered.len());
+                for (vi, dir) in filtered[start..end].iter().enumerate() {
+                    let list_idx = start + vi;
+                    let sel = list_idx == setup.dir_cursor;
+                    let home = std::env::var("HOME").unwrap_or_default();
+                    let display = if !home.is_empty() && dir.starts_with(&home) {
+                        format!("~{}", &dir[home.len()..])
+                    } else { dir.clone() };
+                    w = w.child(
+                        div().w_full().px(self.s(14.0)).py(self.s(4.0))
+                            .bg(if sel { t.selected_row() } else { rgba(0x00000000) })
+                            .flex().items_center().gap(self.s(10.0)).overflow_hidden()
+                            .child(div().text_size(self.s(12.0)).text_color(if sel { t.blue() } else { t.text_faint() })
+                                .child(if sel { ">" } else { " " }))
+                            .child(div().flex_shrink().min_w(px(0.)).text_size(self.s(12.0))
+                                .text_color(if sel { t.text() } else { t.text_muted() })
+                                .child(display)),
+                    );
+                }
+                if filtered.len() > visible_count {
+                    w = w.child(div().px(self.s(14.0)).py(self.s(4.0)).text_size(self.s(10.0)).text_color(t.text_faint())
+                        .child(format!("showing {}-{} of {}", start + 1, end, filtered.len())));
+                }
+            }
             SetupStep::Mcps => {
                 w = w.child(div().px(self.s(14.0)).py(self.s(8.0)).text_size(self.s(11.0)).text_color(t.text_muted())
                     .child("Toggle MCPs (Space to toggle, Tab to continue)"));
@@ -4724,9 +4849,18 @@ impl OpenSquirrel {
                         .child(div().text_size(self.s(12.0)).text_color(t.text_muted()).w(self.s(80.0)).child("Model"))
                         .child(div().text_size(self.s(13.0)).text_color(t.text()).child(model_name.clone())));
 
-                confirm_col = confirm_col.child(div().flex().gap(self.s(8.0))
-                    .child(div().text_size(self.s(12.0)).text_color(t.text_muted()).w(self.s(80.0)).child("Machine"))
-                    .child(div().text_size(self.s(13.0)).text_color(t.text()).child(machine_name)));
+                let home = std::env::var("HOME").unwrap_or_default();
+                let dir_display = if !home.is_empty() && setup.selected_dir.starts_with(&home) {
+                    format!("~{}", &setup.selected_dir[home.len()..])
+                } else { setup.selected_dir.clone() };
+
+                confirm_col = confirm_col
+                    .child(div().flex().gap(self.s(8.0))
+                        .child(div().text_size(self.s(12.0)).text_color(t.text_muted()).w(self.s(80.0)).child("Machine"))
+                        .child(div().text_size(self.s(13.0)).text_color(t.text()).child(machine_name)))
+                    .child(div().flex().gap(self.s(8.0))
+                        .child(div().text_size(self.s(12.0)).text_color(t.text_muted()).w(self.s(80.0)).child("Directory"))
+                        .child(div().text_size(self.s(13.0)).text_color(t.text()).child(dir_display)));
 
                 if has_custom {
                     confirm_col = confirm_col.child(div().flex().gap(self.s(8.0))
