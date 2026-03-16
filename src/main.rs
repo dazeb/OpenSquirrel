@@ -566,6 +566,18 @@ struct AppConfig {
     whisper_model: String,
     #[serde(default)]
     audio_device: String,
+    #[serde(default = "default_bg_opacity")]
+    bg_opacity: f32,
+    #[serde(default = "default_bg_blur")]
+    bg_blur: f32,
+}
+
+fn default_bg_opacity() -> f32 {
+    1.0
+}
+
+fn default_bg_blur() -> f32 {
+    0.0
 }
 
 fn default_whisper_model() -> String {
@@ -689,6 +701,8 @@ impl Default for AppConfig {
             font_size: 15.0,
             whisper_model: default_whisper_model(),
             audio_device: String::new(),
+            bg_opacity: default_bg_opacity(),
+            bg_blur: default_bg_blur(),
         }
     }
 }
@@ -1287,7 +1301,7 @@ struct DelegateTask {
 // ── Palette ─────────────────────────────────────────────────────
 
 struct PaletteItem { label: String, action: PaletteAction }
-enum PaletteAction { NewAgent, NewGroup, SetTheme(String), SetView(ViewMode), KillCurrent, CompactContext, ToggleSidebarTab, ToggleCautiousEnter, ToggleTerminalText, SetAudioDevice(String), Quit }
+enum PaletteAction { NewAgent, NewGroup, SetTheme(String), SetView(ViewMode), KillCurrent, CompactContext, ToggleSidebarTab, ToggleCautiousEnter, ToggleTerminalText, SetAudioDevice(String), SetBgOpacity(f32), SetBgBlur(f32), Quit }
 
 // ── Search ─────────────────────────────────────────────────────
 
@@ -2210,6 +2224,22 @@ impl OpenSquirrel {
             label: format!("Setting: Terminal Text ({})", if self.config.terminal_text { "on" } else { "off" }),
             action: PaletteAction::ToggleTerminalText,
         });
+        for pct in [100, 90, 80, 70, 60, 50, 40, 30, 20, 10] {
+            let val = pct as f32 / 100.0;
+            let active = if (self.config.bg_opacity - val).abs() < 0.01 { " (active)" } else { "" };
+            all.push(PaletteItem {
+                label: format!("Background Opacity: {}%{}", pct, active),
+                action: PaletteAction::SetBgOpacity(val),
+            });
+        }
+        for pct in [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100] {
+            let val = pct as f32 / 100.0;
+            let active = if (self.config.bg_blur - val).abs() < 0.01 { " (active)" } else { "" };
+            all.push(PaletteItem {
+                label: format!("Background Blur: {}%{}", pct, active),
+                action: PaletteAction::SetBgBlur(val),
+            });
+        }
         if VOICE_ENABLED {
             let model_status = if whisper_model_exists(&self.config.whisper_model) { "installed" } else { "not found" };
             all.push(PaletteItem {
@@ -2500,6 +2530,18 @@ impl OpenSquirrel {
                             self.config.terminal_text = !self.config.terminal_text;
                             self.save_config();
                             self.rebuild_palette();
+                        }
+                        PaletteAction::SetBgOpacity(val) => {
+                            self.config.bg_opacity = *val;
+                            self.save_config();
+                            self.rebuild_palette();
+                            self.set_mode(Mode::Normal);
+                        }
+                        PaletteAction::SetBgBlur(val) => {
+                            self.config.bg_blur = *val;
+                            self.save_config();
+                            self.rebuild_palette();
+                            self.set_mode(Mode::Normal);
                         }
                         PaletteAction::SetAudioDevice(name) => {
                             let name = name.clone();
@@ -3505,11 +3547,10 @@ impl OpenSquirrel {
             .collect();
         let tick = self.star_tick;
         let bg_hex = self.theme.bg;
+        let bg_c = self.bg_alpha(rgba(bg_hex));
         canvas(
             move |_bounds, _window, _cx| {},
             move |bounds, _, window, _cx| {
-                let bg_c = rgba(bg_hex);
-                // Draw background
                 window.paint_quad(fill(bounds, bg_c));
 
                 let time = tick as f32 * 0.033; // ~seconds
@@ -3642,10 +3683,18 @@ impl OpenSquirrel {
 
     fn s(&self, base: f32) -> Pixels { px(base * self.ui_scale) }
 
+    /// Apply background opacity to a color. Used for bg, surface, surface_raised so the desktop shows through.
+    fn bg_alpha(&self, c: Rgba) -> Rgba {
+        let o = self.config.bg_opacity;
+        Rgba { r: c.r, g: c.g, b: c.b, a: c.a * o }
+    }
+
     fn render_sidebar(&self, cx: &mut Context<Self>) -> impl IntoElement + use<'_> {
         let t = &self.theme;
+        let surface = self.bg_alpha(t.surface());
+        let surface_raised = self.bg_alpha(t.surface_raised());
         let mut sb = div()
-            .w(self.s(220.0)).h_full().bg(t.surface())
+            .w(self.s(220.0)).h_full().bg(surface)
             .border_r_1().border_color(t.border())
             .pt(self.s(16.0)).pb(self.s(16.0)).px(self.s(14.0)).flex().flex_col()
             .shadow(vec![
@@ -3664,7 +3713,7 @@ impl OpenSquirrel {
                 .child(
                     div().id("tab-agents")
                         .px(self.s(8.0)).py(self.s(3.0)).rounded(self.s(4.0))
-                        .bg(if agents_active { t.surface_raised() } else { rgba(0x00000000) })
+                        .bg(if agents_active { surface_raised } else { rgba(0x00000000) })
                         .text_size(self.s(11.0))
                         .text_color(if agents_active { t.text() } else { t.text_faint() })
                         .cursor_pointer()
@@ -3674,7 +3723,7 @@ impl OpenSquirrel {
                 .child(
                     div().id("tab-workers")
                         .px(self.s(8.0)).py(self.s(3.0)).rounded(self.s(4.0))
-                        .bg(if !agents_active { t.surface_raised() } else { rgba(0x00000000) })
+                        .bg(if !agents_active { surface_raised } else { rgba(0x00000000) })
                         .text_size(self.s(11.0))
                         .text_color(if !agents_active { t.text() } else { t.text_faint() })
                         .cursor_pointer()
@@ -3687,7 +3736,7 @@ impl OpenSquirrel {
             SidebarTab::Agents => {
                 for (gi, group) in self.groups.iter().enumerate() {
                     let focused = gi == self.focused_group;
-                    let bg = if focused { t.surface_raised() } else { rgba(0x00000000) };
+                    let bg = if focused { surface_raised } else { rgba(0x00000000) };
                     let tc = if focused { t.text() } else { t.text_muted() };
 
                     sb = sb.child(
@@ -3739,7 +3788,7 @@ impl OpenSquirrel {
                         .w_full().px(self.s(8.0)).py(self.s(5.0)).rounded(self.s(6.0))
                         .cursor_pointer()
                         .flex().items_center().gap(self.s(8.0))
-                        .hover(|s| s.bg(t.surface_raised()))
+                        .hover(move |s| s.bg(surface_raised))
                         .child(div().text_size(self.s(13.0)).text_color(t.text_faint()).child("+"))
                         .child(div().text_size(self.s(11.0)).text_color(t.text_faint()).child("new agent"))
                         .on_click(cx.listener(|this, _, _, cx| {
@@ -3767,7 +3816,7 @@ impl OpenSquirrel {
                         sb = sb.child(
                             div().id(ElementId::Name(format!("worker-{}", worker_idx).into()))
                                 .w_full().px(self.s(8.0)).py(self.s(5.0)).rounded(self.s(6.0))
-                                .bg(if worker_idx == self.focused_agent { t.surface_raised() } else { rgba(0x00000000) })
+                                .bg(if worker_idx == self.focused_agent { surface_raised } else { rgba(0x00000000) })
                                 .cursor_pointer()
                                 .flex().flex_col().gap(self.s(2.0))
                                 .child(div().flex().items_center().gap(self.s(6.0))
@@ -3837,7 +3886,7 @@ impl OpenSquirrel {
             .child(div().flex().gap(self.s(6.0)).items_center()
                 .child(mode_badge)
                 .child(div().px(self.s(5.0)).py(self.s(2.0)).rounded(self.s(4.0))
-                    .bg(t.surface_raised()).text_size(self.s(10.0)).text_color(t.text_muted()).child(vl)))
+                    .bg(self.bg_alpha(t.surface_raised())).text_size(self.s(10.0)).text_color(t.text_muted()).child(vl)))
             .child(div().text_size(self.s(10.0)).text_color(t.text_faint()).child(format!("{}%", (self.ui_scale * 100.0) as u32))),
         );
         sb
@@ -3850,7 +3899,7 @@ impl OpenSquirrel {
             Span::Text(s) => parent.child(div().text_color(t.text()).child(s.clone())),
             Span::Code(s) => parent.child(
                 div().px(self.s(4.0)).py(self.s(1.0)).mx(self.s(1.0))
-                    .rounded(self.s(3.0)).bg(t.surface_raised())
+                    .rounded(self.s(3.0)).bg(self.bg_alpha(t.surface_raised()))
                     .text_color(t.user_input())
                     .text_size(self.s(self.font_size - 1.0))
                     .font_family(SharedString::from("Menlo"))
@@ -3903,7 +3952,7 @@ impl OpenSquirrel {
         let mut tile = div()
             .id(ElementId::Name(format!("tile-{}", idx).into()))
             .flex_grow().flex_shrink().min_w(px(0.)).h_full()
-            .bg(t.bg()).flex().flex_col().overflow_hidden()
+            .bg(self.bg_alpha(t.bg())).flex().flex_col().overflow_hidden()
             .cursor_pointer()
             .shadow(tile_shadow)
             .on_click(cx.listener(move |this, _event, _window, cx| {
@@ -3937,7 +3986,7 @@ impl OpenSquirrel {
         );
 
         let mut header = div().w_full().min_w(px(0.)).px(self.s(10.0)).pt(px(36.0)).pb(self.s(4.0))
-            .bg(t.surface())
+            .bg(self.bg_alpha(t.surface()))
             .border_b_1().border_color(t.border())
             .flex().items_center().gap(self.s(6.0)).overflow_hidden();
 
@@ -4070,19 +4119,19 @@ impl OpenSquirrel {
 
         if has_badges {
             let mut badges = div().w_full().px(self.s(10.0)).py(self.s(3.0))
-                .bg(t.surface()).border_b_1().border_color(t.border())
+                .bg(self.bg_alpha(t.surface())).border_b_1().border_color(t.border())
                 .flex().items_center().gap(self.s(4.0)).overflow_hidden();
 
             if a.tokens.thinking_enabled {
                 badges = badges.child(
-                    div().px(self.s(4.0)).py(self.s(1.0)).rounded(self.s(3.0)).bg(t.surface_raised())
+                    div().px(self.s(4.0)).py(self.s(1.0)).rounded(self.s(3.0)).bg(self.bg_alpha(t.surface_raised()))
                         .text_size(self.s(8.0)).text_color(t.yellow()).child("think")
                 );
             }
             if !a.runtime_info.plugins.is_empty() {
                 let n = a.runtime_info.plugins.len();
                 badges = badges.child(
-                    div().px(self.s(4.0)).py(self.s(1.0)).rounded(self.s(3.0)).bg(t.surface_raised())
+                    div().px(self.s(4.0)).py(self.s(1.0)).rounded(self.s(3.0)).bg(self.bg_alpha(t.surface_raised()))
                         .text_size(self.s(8.0)).text_color(t.blue_muted())
                         .child(if n == 1 { "1 plugin".into() } else { format!("{} plugins", n) })
                 );
@@ -4090,7 +4139,7 @@ impl OpenSquirrel {
             if !a.runtime_info.mcps.is_empty() {
                 let n = a.runtime_info.mcps.len();
                 badges = badges.child(
-                    div().px(self.s(4.0)).py(self.s(1.0)).rounded(self.s(3.0)).bg(t.surface_raised())
+                    div().px(self.s(4.0)).py(self.s(1.0)).rounded(self.s(3.0)).bg(self.bg_alpha(t.surface_raised()))
                         .text_size(self.s(8.0)).text_color(t.green())
                         .child(if n == 1 { "1 mcp".into() } else { format!("{} mcps", n) })
                 );
@@ -4099,7 +4148,7 @@ impl OpenSquirrel {
                 let tc_recent = a.last_tool_call_at
                     .map(|t| t.elapsed() < Duration::from_millis(600))
                     .unwrap_or(false);
-                let tc_badge = div().px(self.s(4.0)).py(self.s(1.0)).rounded(self.s(3.0)).bg(t.surface_raised())
+                let tc_badge = div().px(self.s(4.0)).py(self.s(1.0)).rounded(self.s(3.0)).bg(self.bg_alpha(t.surface_raised()))
                     .text_size(self.s(8.0)).text_color(if tc_recent { t.green() } else { t.text_muted() })
                     .child(tc_summary);
                 if tc_recent {
@@ -4118,7 +4167,7 @@ impl OpenSquirrel {
             }
             if !a.auto_scroll {
                 badges = badges.child(
-                    div().px(self.s(4.0)).py(self.s(1.0)).rounded(self.s(3.0)).bg(t.surface_raised())
+                    div().px(self.s(4.0)).py(self.s(1.0)).rounded(self.s(3.0)).bg(self.bg_alpha(t.surface_raised()))
                         .text_size(self.s(8.0)).text_color(t.yellow())
                         .child("pinned")
                         .with_animation(
@@ -4138,7 +4187,7 @@ impl OpenSquirrel {
             let workers = self.child_workers(idx);
             if !workers.is_empty() {
                 let mut worker_strip = div().w_full().px(self.s(14.0)).py(self.s(6.0))
-                    .bg(t.surface())
+                    .bg(self.bg_alpha(t.surface()))
                     .border_b_1().border_color(t.border())
                     .flex().flex_col().gap(self.s(4.0))
                     .child(div().text_size(self.s(10.0)).text_color(t.text_faint()).child("workers"));
@@ -4162,12 +4211,12 @@ impl OpenSquirrel {
         if let Some(notice) = &a.restore_notice {
             tile = tile.child(
                 div().w_full().px(self.s(14.0)).py(self.s(10.0))
-                    .bg(t.surface())
+                    .bg(self.bg_alpha(t.surface()))
                     .border_b_1().border_color(t.border())
                     .child(
                         div().w_full().px(self.s(10.0)).py(self.s(8.0))
                             .rounded(self.s(8.0))
-                            .bg(t.surface_raised())
+                            .bg(self.bg_alpha(t.surface_raised()))
                             .text_size(self.s(12.0)).text_color(t.text_muted())
                             .child(notice.clone())
                     )
@@ -4254,7 +4303,7 @@ impl OpenSquirrel {
                 out = out.child(
                     div().w_full().px(self.s(12.0)).py(self.s(10.0))
                         .rounded(self.s(10.0))
-                        .bg(t.surface())
+                        .bg(self.bg_alpha(t.surface()))
                         .border_1().border_color(t.blue())
                         .child(div().text_color(t.blue()).text_size(self.s(fs)).child(display_text.to_string()))
                 );
@@ -4296,7 +4345,7 @@ impl OpenSquirrel {
                         if !lang.is_empty() {
                             card = card.child(
                                 div().w_full().px(self.s(8.0)).pt(self.s(6.0)).pb(self.s(2.0))
-                                    .bg(t.surface_raised()).rounded_t(self.s(4.0))
+                                    .bg(self.bg_alpha(t.surface_raised())).rounded_t(self.s(4.0))
                                     .text_size(self.s(10.0)).text_color(t.text_faint())
                                     .child(lang)
                             );
@@ -4310,7 +4359,7 @@ impl OpenSquirrel {
                 if in_code_block {
                     card = card.child(
                         div().w_full().px(self.s(8.0)).py(self.s(1.0))
-                            .bg(t.surface_raised())
+                            .bg(self.bg_alpha(t.surface_raised()))
                             .text_size(self.s(fs - 1.0)).text_color(t.text())
                             .font_family(SharedString::from("Menlo"))
                             .child(bline.clone())
@@ -4415,7 +4464,7 @@ impl OpenSquirrel {
 
             let mut input_area = div()
                 .id(ElementId::Name(format!("input-click-{}", idx).into()))
-                .w_full().px(self.s(14.0)).py(self.s(10.0)).bg(t.surface())
+                .w_full().px(self.s(14.0)).py(self.s(10.0)).bg(self.bg_alpha(t.surface()))
                 .border_t_1().border_color(t.border_focus())
                 .flex().flex_col().gap(self.s(4.0))
                 .font_family(self.font_family.clone()).text_size(self.s(fs))
@@ -4962,7 +5011,7 @@ impl OpenSquirrel {
         let total_tools: u32 = self.agents.iter().map(|a| a.tool_calls.total()).sum();
 
         panel = panel.child(
-            div().w_full().p(self.s(12.0)).bg(t.surface_raised()).rounded(self.s(8.0))
+            div().w_full().p(self.s(12.0)).bg(self.bg_alpha(t.surface_raised())).rounded(self.s(8.0))
                 .flex().flex_col().gap(self.s(6.0))
                 .child(div().text_size(self.s(11.0)).text_color(t.text_muted()).font_weight(FontWeight::BOLD).child("TOTALS"))
                 .child(self.stat_row("Total Cost", &format!("${:.4}", total_cost), t.green()))
@@ -4983,7 +5032,7 @@ impl OpenSquirrel {
             let rt_color = t.runtime_color(&a.runtime_name);
             let pct = a.tokens.context_usage_pct();
             panel = panel.child(
-                div().w_full().p(self.s(10.0)).bg(t.surface()).rounded(self.s(6.0))
+                div().w_full().p(self.s(10.0)).bg(self.bg_alpha(t.surface())).rounded(self.s(6.0))
                     .border_l_2().border_color(rt_color)
                     .flex().flex_col().gap(self.s(4.0))
                     .child(div().flex().items_center().gap(self.s(8.0))
@@ -5021,7 +5070,7 @@ impl OpenSquirrel {
             div().text_size(self.s(11.0)).text_color(t.text_muted()).font_weight(FontWeight::BOLD).mt(self.s(12.0)).child("SHORTCUTS")
         );
         panel = panel.child(
-            div().w_full().p(self.s(10.0)).bg(t.surface()).rounded(self.s(6.0))
+            div().w_full().p(self.s(10.0)).bg(self.bg_alpha(t.surface())).rounded(self.s(6.0))
                 .flex().flex_col().gap(self.s(3.0))
                 .child(self.shortcut_row("i / click", "enter insert mode"))
                 .child(self.shortcut_row("esc", "command mode"))
@@ -5179,7 +5228,7 @@ impl OpenSquirrel {
                             .child(
                                 div().id("confirm-remove-no")
                                     .px(self.s(12.0)).py(self.s(7.0)).rounded(self.s(8.0))
-                                    .bg(t.surface_raised()).border_1().border_color(t.border())
+                                    .bg(self.bg_alpha(t.surface_raised())).border_1().border_color(t.border())
                                     .cursor_pointer()
                                     .text_size(self.s(11.0)).text_color(t.text())
                                     .on_click(cx.listener(|this, _, _, cx| {
@@ -5231,7 +5280,7 @@ impl OpenSquirrel {
         let titlebar_safe_left = self.s(112.0);
         div().w_full()
             .pl(titlebar_safe_left).pr(self.s(12.0)).py(self.s(4.0))
-            .bg(t.surface())
+            .bg(self.bg_alpha(t.surface()))
             .border_b_1().border_color(t.border())
             .flex().items_center().gap(self.s(8.0))
             .child(div().flex_grow())
@@ -5242,7 +5291,7 @@ impl OpenSquirrel {
                             .px(self.s(7.0)).py(self.s(4.0)).rounded(self.s(6.0))
                             .cursor_pointer()
                             .text_size(self.s(14.0)).text_color(t.text_muted())
-                            .hover(|s| s.bg(t.surface_raised()).text_color(t.text()))
+                            .hover(|s| s.bg(self.bg_alpha(t.surface_raised())).text_color(t.text()))
                             .child("⚙")
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.open_palette(&OpenPalette, window, cx);
@@ -5253,7 +5302,7 @@ impl OpenSquirrel {
                             .px(self.s(7.0)).py(self.s(4.0)).rounded(self.s(6.0))
                             .cursor_pointer()
                             .text_size(self.s(14.0)).text_color(if self.show_stats { t.blue() } else { t.text_muted() })
-                            .hover(|s| s.bg(t.surface_raised()).text_color(t.text()))
+                            .hover(|s| s.bg(self.bg_alpha(t.surface_raised())).text_color(t.text()))
                             .child("⊞")
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.show_stats(&ShowStats, window, cx);
@@ -5357,15 +5406,15 @@ impl Render for OpenSquirrel {
 
                         let stage = div()
                             .min_w(self.s(200.0)).max_w(self.s(350.0)).h_full().flex_shrink()
-                            .bg(t.bg()).border_1().border_color(bc).rounded(self.s(10.0)).m(self.s(4.0))
+                            .bg(self.bg_alpha(t.bg())).border_1().border_color(bc).rounded(self.s(10.0)).m(self.s(4.0))
                             .flex().flex_col().overflow_hidden()
                             .shadow(stage_shadow)
                             .child(
                                 div().w_full().px(self.s(10.0)).py(self.s(7.0))
                                     .bg(linear_gradient(
                                         180.0,
-                                        linear_color_stop(t.header_gradient_start(), 0.0),
-                                        linear_color_stop(t.header_gradient_end(), 1.0),
+                                        linear_color_stop(self.bg_alpha(t.header_gradient_start()), 0.0),
+                                        linear_color_stop(self.bg_alpha(t.header_gradient_end()), 1.0),
                                     ))
                                     .flex().items_center().gap(self.s(6.0))
                                     .child(div().text_size(self.s(10.0)).text_color(a.status.color(t)).child(a.status.dot()))
@@ -5422,7 +5471,7 @@ impl Render for OpenSquirrel {
         let is_ops = self.config.theme == "ops";
         let mut root = div()
             .key_context(key_ctx).track_focus(&self.focus_handle).size_full().text_color(t.text())
-            .when(!is_ops, |d| d.bg(t.bg()))
+            .when(!is_ops, |d| d.bg(self.bg_alpha(t.bg())))
             .flex().flex_col()
             .on_action(cx.listener(Self::enter_command_mode))
             .on_action(cx.listener(Self::open_palette))
@@ -6406,6 +6455,17 @@ fn main() {
             KeyBinding::new("down", NavDown, Some("SearchMode")),
         ]);
 
+        // Load config to apply bg_opacity/bg_blur at window creation.
+        // Note: Window background cannot be changed at runtime; restart required for blur/transparency changes.
+        let config = AppConfig::load();
+        let window_background = if config.bg_blur > 0.0 {
+            WindowBackgroundAppearance::Blurred
+        } else if config.bg_opacity < 1.0 {
+            WindowBackgroundAppearance::Transparent
+        } else {
+            WindowBackgroundAppearance::Opaque
+        };
+
         let opts = WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(Bounds::centered(None, size(px(1400.0), px(900.0)), app))),
             titlebar: Some(TitlebarOptions {
@@ -6413,7 +6473,7 @@ fn main() {
                 appears_transparent: true,
                 traffic_light_position: Some(point(px(10.0), px(10.0))),
             }),
-            window_background: WindowBackgroundAppearance::Opaque,
+            window_background,
             ..Default::default()
         };
 
