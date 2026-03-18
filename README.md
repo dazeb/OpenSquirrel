@@ -92,7 +92,17 @@ If your environment has AppImage runtime quirks or fails to mount/run directly, 
 curl -L https://github.com/dazeb/OpenSquirrel/releases/download/v0.1.0-linux-preview/OpenSquirrel-x86_64.AppImage -o OpenSquirrel.AppImage && chmod +x OpenSquirrel.AppImage && APPIMAGE_EXTRACT_AND_RUN=1 ./OpenSquirrel.AppImage
 ```
 
-If the app starts but exits with `NoSupportedDeviceFound`, install Vulkan userspace tools and drivers, then verify with `vulkaninfo --summary`.
+If the app starts but exits with `NoSupportedDeviceFound`, install Vulkan userspace tools and drivers:
+
+```bash
+sudo apt-get update && sudo apt-get install -y mesa-vulkan-drivers libvulkan1 vulkan-tools
+```
+
+Then verify that Vulkan sees a usable device:
+
+```bash
+vulkaninfo --summary
+```
 
 Install the Debian package:
 
