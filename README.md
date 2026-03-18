@@ -65,11 +65,25 @@ Build an AppImage:
 
 The resulting artifact is written to `dist/OpenSquirrel-x86_64.AppImage`.
 
+Build a Debian package:
+
+```bash
+./scripts/build-deb.sh
+```
+
+The resulting artifact is written to `dist/opensquirrel_0.1.0_amd64.deb` on amd64 systems.
+
 Run the AppImage:
 
 ```bash
 chmod +x dist/OpenSquirrel-x86_64.AppImage
 ./dist/OpenSquirrel-x86_64.AppImage
+```
+
+Install the Debian package:
+
+```bash
+sudo apt install ./dist/opensquirrel_0.1.0_amd64.deb
 ```
 
 WSL2 note: GPUI currently behaves better through X11 than Wayland under WSLg. If Wayland startup fails, run:
