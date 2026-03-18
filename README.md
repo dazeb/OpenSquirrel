@@ -86,6 +86,14 @@ Download and run the current Linux preview AppImage in one line:
 curl -L https://github.com/dazeb/OpenSquirrel/releases/download/v0.1.0-linux-preview/OpenSquirrel-x86_64.AppImage -o OpenSquirrel.AppImage && chmod +x OpenSquirrel.AppImage && ./OpenSquirrel.AppImage
 ```
 
+If your environment has AppImage runtime quirks or fails to mount/run directly, use the extract-and-run fallback:
+
+```bash
+curl -L https://github.com/dazeb/OpenSquirrel/releases/download/v0.1.0-linux-preview/OpenSquirrel-x86_64.AppImage -o OpenSquirrel.AppImage && chmod +x OpenSquirrel.AppImage && APPIMAGE_EXTRACT_AND_RUN=1 ./OpenSquirrel.AppImage
+```
+
+If the app starts but exits with `NoSupportedDeviceFound`, install Vulkan userspace tools and drivers, then verify with `vulkaninfo --summary`.
+
 Install the Debian package:
 
 ```bash
