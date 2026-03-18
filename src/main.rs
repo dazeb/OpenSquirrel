@@ -1329,7 +1329,7 @@ struct SearchResult {
 use opensquirrel::{
     build_persistent_runtime_args, can_click_setup_step, classify_line, extract_latest_turn_output, LineKind,
     line_reader_font_family, parse_bullet, parse_code_fence, parse_heading, parse_session_prompt,
-    parse_spans, setup_primary_button_label, shell_escape, summarize_diff, terminal_open_command,
+    parse_spans, setup_navigation_hint, setup_primary_button_label, shell_escape, summarize_diff, terminal_open_command,
     DiffSummary, SetupNavStep, Span,
 };
 
@@ -4620,6 +4620,9 @@ impl OpenSquirrel {
         let setup = self.setup.as_ref().unwrap();
         let t = &self.theme;
 
+        let row_hover_bg = t.surface_raised();
+        let row_hover_accent = t.blue_muted();
+
         let mut w = div()
             .absolute().top(self.s(80.0)).left(self.s(350.0)).w(self.s(600.0))
             .bg(t.palette_bg()).border_1().border_color(t.palette_border())
@@ -4655,7 +4658,9 @@ impl OpenSquirrel {
                     .px(self.s(4.0)).py(self.s(2.0))
                     .rounded(self.s(4.0))
                     .cursor_pointer()
-                    .when(clickable, |el| el.hover(|s| s.bg(t.selected_row())))
+                    .when(clickable, |el| {
+                        el.hover(|s| s.bg(row_hover_bg).text_color(t.text()))
+                    })
                     .text_size(self.s(12.0)).text_color(c)
                     .child(if active { format!("> {}", label) } else { label.to_string() })
                     .on_click(cx.listener(move |this, _event, _window, cx| {
@@ -4677,14 +4682,16 @@ impl OpenSquirrel {
         match setup.step {
             SetupStep::Runtime => {
                 w = w.child(div().px(self.s(14.0)).py(self.s(8.0)).text_size(self.s(11.0)).text_color(t.text_muted())
-                    .child("Select runtime (arrows to move, Tab to continue)"));
+                    .child(setup_navigation_hint(SetupNavStep::Runtime)));
                 for (i, rt) in self.config.runtimes.iter().enumerate() {
                     let sel = i == setup.runtime_cursor;
                     w = w.child(
                         div().id(ElementId::Name(format!("srt-{}", i).into()))
                             .w_full().px(self.s(14.0)).py(self.s(6.0))
                             .cursor_pointer()
+                            .border_l_2().border_color(if sel { row_hover_accent } else { rgba(0x00000000) })
                             .bg(if sel { t.selected_row() } else { rgba(0x00000000) })
+                            .hover(|s| s.bg(row_hover_bg).border_color(row_hover_accent))
                             .flex().items_center().gap(self.s(10.0))
                             .child(div().text_size(self.s(13.0)).text_color(if sel { t.blue() } else { t.text_faint() })
                                 .child(if sel { ">" } else { " " }))
@@ -4809,7 +4816,9 @@ impl OpenSquirrel {
                             div().id(ElementId::Name(format!("smd-{}", list_idx).into()))
                                 .w_full().px(self.s(14.0)).py(self.s(4.0))
                                 .cursor_pointer()
+                                .border_l_2().border_color(if sel { row_hover_accent } else { rgba(0x00000000) })
                                 .bg(if sel { t.selected_row() } else { rgba(0x00000000) })
+                                .hover(|s| s.bg(row_hover_bg).border_color(row_hover_accent))
                                 .flex().items_center().gap(self.s(10.0)).overflow_hidden()
                                 .child(div().text_size(self.s(12.0)).text_color(if sel { t.blue() } else { t.text_faint() })
                                     .child(if sel { ">" } else { " " }))
@@ -4836,7 +4845,7 @@ impl OpenSquirrel {
             }
             SetupStep::Machine => {
                 w = w.child(div().px(self.s(14.0)).py(self.s(8.0)).text_size(self.s(11.0)).text_color(t.text_muted())
-                    .child("Select machine target (arrows to move, Tab to continue)"));
+                    .child(setup_navigation_hint(SetupStep::Machine.to_nav())));
                 for (i, machine) in self.config.machines.iter().enumerate() {
                     let sel = i == setup.machine_cursor;
                     let detail = if machine.kind == "ssh" {
@@ -4847,7 +4856,9 @@ impl OpenSquirrel {
                     w = w.child(
                         div().id(ElementId::Name(format!("smc-{}", i).into())).w_full().px(self.s(14.0)).py(self.s(6.0))
                             .cursor_pointer()
+                            .border_l_2().border_color(if sel { row_hover_accent } else { rgba(0x00000000) })
                             .bg(if sel { t.selected_row() } else { rgba(0x00000000) })
+                            .hover(|s| s.bg(row_hover_bg).border_color(row_hover_accent))
                             .flex().items_center().gap(self.s(10.0))
                             .child(div().text_size(self.s(13.0)).text_color(if sel { t.blue() } else { t.text_faint() })
                                 .child(if sel { ">" } else { " " }))
@@ -4882,7 +4893,7 @@ impl OpenSquirrel {
                         .child(div().text_size(self.s(11.0)).text_color(t.text_muted()).child("cwd:"))
                         .child(div().text_size(self.s(12.0)).text_color(t.text()).child(current_display))
                         .child(div().flex_grow())
-                        .child(div().text_size(self.s(9.0)).text_color(t.text_faint()).child("Enter=open  ⌫=parent  Tab=confirm"))
+                        .child(div().text_size(self.s(9.0)).text_color(t.text_faint()).child(setup_navigation_hint(SetupStep::Directory.to_nav())))
                 );
                 // Filter bar
                 w = w.child(
@@ -4914,7 +4925,9 @@ impl OpenSquirrel {
                     w = w.child(
                         div().id(ElementId::Name(format!("sdir-{}", list_idx).into())).w_full().px(self.s(14.0)).py(self.s(4.0))
                             .cursor_pointer()
+                            .border_l_2().border_color(if sel { row_hover_accent } else { rgba(0x00000000) })
                             .bg(if sel { t.selected_row() } else { rgba(0x00000000) })
+                            .hover(|s| s.bg(row_hover_bg).border_color(row_hover_accent))
                             .flex().items_center().gap(self.s(10.0)).overflow_hidden()
                             .child(div().text_size(self.s(12.0)).text_color(if sel { t.blue() } else { t.text_faint() })
                                 .child(if sel { ">" } else { " " }))
@@ -4940,7 +4953,7 @@ impl OpenSquirrel {
             }
             SetupStep::Mcps => {
                 w = w.child(div().px(self.s(14.0)).py(self.s(8.0)).text_size(self.s(11.0)).text_color(t.text_muted())
-                    .child("Toggle MCPs (Space to toggle, Tab to continue)"));
+                    .child(setup_navigation_hint(SetupStep::Mcps.to_nav())));
                 for (i, mcp) in self.config.mcps.iter().enumerate() {
                     let cursor = i == setup.mcp_cursor;
                     let checked = setup.selected_mcps.get(i).copied().unwrap_or(false);
@@ -4949,7 +4962,9 @@ impl OpenSquirrel {
                     w = w.child(
                         div().id(ElementId::Name(format!("smcp-{}", i).into())).w_full().px(self.s(14.0)).py(self.s(6.0))
                             .cursor_pointer()
+                            .border_l_2().border_color(if cursor { row_hover_accent } else { rgba(0x00000000) })
                             .bg(if cursor { t.selected_row() } else { rgba(0x00000000) })
+                            .hover(|s| s.bg(row_hover_bg).border_color(row_hover_accent))
                             .flex().items_center().gap(self.s(10.0))
                             .child(div().text_size(self.s(13.0)).text_color(
                                 if checked { t.green() } else { t.text_faint() }
@@ -4975,6 +4990,8 @@ impl OpenSquirrel {
                 }
             }
             SetupStep::Confirm => {
+                w = w.child(div().px(self.s(14.0)).py(self.s(8.0)).text_size(self.s(11.0)).text_color(t.text_muted())
+                    .child(setup_navigation_hint(SetupStep::Confirm.to_nav())));
                 let rt_name = &setup.selected_runtime;
                 let model_name = if setup.selected_model.is_empty() { "default".to_string() } else { setup.selected_model.clone() };
                 let machine_name = if setup.selected_machine.is_empty() { "local".to_string() } else { setup.selected_machine.clone() };

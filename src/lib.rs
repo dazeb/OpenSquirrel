@@ -391,6 +391,19 @@ pub fn setup_primary_button_label(step: SetupNavStep, editing_existing: bool) ->
     }
 }
 
+pub fn setup_navigation_hint(step: SetupNavStep) -> &'static str {
+    use SetupNavStep::*;
+
+    match step {
+        Machine => "Click a machine or use arrows. Tab continues.",
+        Directory => "Click a directory or use arrows. Enter opens. Tab confirms.",
+        Runtime => "Click a runtime or use arrows. Tab continues.",
+        Model => "Click a model or use arrows. Type to filter.",
+        Mcps => "Click to toggle MCPs or use Space. Tab continues.",
+        Confirm => "Review with mouse or keyboard. Enter confirms.",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -606,5 +619,21 @@ mod tests {
         assert_eq!(setup_primary_button_label(SetupNavStep::Machine, false), "Next");
         assert_eq!(setup_primary_button_label(SetupNavStep::Confirm, false), "Create Agent");
         assert_eq!(setup_primary_button_label(SetupNavStep::Confirm, true), "Apply");
+    }
+
+    #[test]
+    fn test_setup_navigation_hint_mentions_click_targets() {
+        assert_eq!(
+            setup_navigation_hint(SetupNavStep::Machine),
+            "Click a machine or use arrows. Tab continues."
+        );
+        assert_eq!(
+            setup_navigation_hint(SetupNavStep::Directory),
+            "Click a directory or use arrows. Enter opens. Tab confirms."
+        );
+        assert_eq!(
+            setup_navigation_hint(SetupNavStep::Confirm),
+            "Review with mouse or keyboard. Enter confirms."
+        );
     }
 }
