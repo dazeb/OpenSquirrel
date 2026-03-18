@@ -80,6 +80,12 @@ chmod +x dist/OpenSquirrel-x86_64.AppImage
 ./dist/OpenSquirrel-x86_64.AppImage
 ```
 
+Download and run the current Linux preview AppImage in one line:
+
+```bash
+curl -L https://github.com/dazeb/OpenSquirrel/releases/download/v0.1.0-linux-preview/OpenSquirrel-x86_64.AppImage -o OpenSquirrel.AppImage && chmod +x OpenSquirrel.AppImage && ./OpenSquirrel.AppImage
+```
+
 Install the Debian package:
 
 ```bash
