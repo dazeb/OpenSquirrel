@@ -33,7 +33,50 @@ cargo build --release
 ./target/release/opensquirrel
 ```
 
-Requires Rust toolchain and macOS (Metal GPU).
+### Linux
+
+OpenSquirrel now builds on Linux and can be packaged as an AppImage.
+
+Prerequisites on Ubuntu/Debian:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y \
+  build-essential clang cmake pkg-config curl \
+  libasound2-dev libwayland-dev libxkbcommon-x11-dev \
+  libfontconfig-dev libssl-dev libvulkan-dev mesa-vulkan-drivers
+rustup component add rustfmt
+```
+
+Build and run from source:
+
+```bash
+cargo run
+```
+
+Build a release binary:
+
+```bash
+./scripts/build-linux-release.sh
+```
+
+Build an AppImage:
+
+```bash
+./scripts/build-appimage.sh
+```
+
+The resulting artifact is written to `dist/OpenSquirrel-x86_64.AppImage`.
+
+WSL2 note: GPUI currently behaves better through X11 than Wayland under WSLg. If Wayland startup fails, run:
+
+```bash
+WAYLAND_DISPLAY='' cargo run
+```
+
+### macOS
+
+Requires Rust toolchain and Metal GPU.
 
 To run as a proper macOS `.app` bundle with the squirrel icon:
 
@@ -83,7 +126,7 @@ State is persisted at `~/.opensquirrel/state.json` (agents, transcripts, scroll 
 - `src/lib.rs` — Line classification, markdown parsing, diff summarization, helpers
 - `tests/state_tests.rs` — 30 integration tests covering navigation, scrolling, themes, search, agent lifecycle
 
-Built on [GPUI](https://crates.io/crates/gpui) (the UI framework from Zed, used as a standalone crate). GPU-rendered via Metal on macOS.
+Built on [GPUI](https://crates.io/crates/gpui) (the UI framework from Zed, used as a standalone crate). GPU-rendered via Metal on macOS and Linux GPU backends through GPUI.
 
 ## Themes
 

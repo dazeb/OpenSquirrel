@@ -299,6 +299,63 @@ pub fn shell_escape(arg: &str) -> String {
     format!("'{}'", escaped)
 }
 
+pub fn terminal_open_command(dir: &str) -> Option<(String, Vec<String>)> {
+    if dir.is_empty() {
+        return None;
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        Some((
+            "open".to_string(),
+            vec!["-a".to_string(), "Terminal".to_string(), dir.to_string()],
+        ))
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let program = if is_wsl() { "explorer.exe" } else { "xdg-open" };
+        Some((program.to_string(), vec![dir.to_string()]))
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    {
+        None
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn is_wsl() -> bool {
+    if std::env::var_os("WSL_DISTRO_NAME").is_some() || std::env::var_os("WSL_INTEROP").is_some() {
+        return true;
+    }
+
+    std::fs::read_to_string("/proc/version")
+        .map(|version| version.to_ascii_lowercase().contains("microsoft"))
+        .unwrap_or(false)
+}
+
+pub fn line_reader_font_family(terminal_text: bool, configured_font: &str) -> String {
+    if terminal_text {
+        return configured_font.to_string();
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        "Helvetica Neue".to_string()
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        "Sans".to_string()
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    {
+        configured_font.to_string()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

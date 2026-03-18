@@ -1,7 +1,7 @@
 /// Tests for OpenSquirrel state management logic.
 
 use std::process::Command;
-use opensquirrel::{classify_line, LineKind};
+use opensquirrel::{classify_line, line_reader_font_family, terminal_open_command, LineKind};
 
 #[test]
 fn binary_builds() {
@@ -11,6 +11,23 @@ fn binary_builds() {
         .status()
         .expect("failed to run cargo build");
     assert!(status.success());
+}
+
+#[test]
+fn linux_terminal_open_command_uses_platform_launcher() {
+    if cfg!(target_os = "linux") {
+        let (program, args) = terminal_open_command("/tmp/worktree").expect("linux command");
+        assert!(program == "xdg-open" || program == "explorer.exe");
+        assert_eq!(args, vec!["/tmp/worktree".to_string()]);
+    }
+}
+
+#[test]
+fn linux_default_reader_font_is_not_helvetica_neue() {
+    if cfg!(target_os = "linux") {
+        assert_eq!(line_reader_font_family(false, "FiraCode Nerd Font"), "Sans");
+        assert_eq!(line_reader_font_family(true, "FiraCode Nerd Font"), "FiraCode Nerd Font");
+    }
 }
 
 #[test]

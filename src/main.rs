@@ -1315,8 +1315,8 @@ struct SearchResult {
 // ── Diff classification (re-exported from lib.rs for tests) ─────
 use opensquirrel::{
     build_persistent_runtime_args, classify_line, extract_latest_turn_output, LineKind,
-    parse_bullet, parse_code_fence, parse_heading, parse_session_prompt, parse_spans,
-    shell_escape, summarize_diff, DiffSummary, Span,
+    line_reader_font_family, parse_bullet, parse_code_fence, parse_heading, parse_session_prompt,
+    parse_spans, shell_escape, summarize_diff, terminal_open_command, DiffSummary, Span,
 };
 
 // ── Groups ──────────────────────────────────────────────────────
@@ -3587,8 +3587,8 @@ impl OpenSquirrel {
         let idx = self.focused_agent;
         if idx < self.agents.len() {
             let dir = &self.agents[idx].working_dir;
-            if !dir.is_empty() {
-                let _ = Command::new("open").arg("-a").arg("Terminal").arg(dir).spawn();
+            if let Some((program, args)) = terminal_open_command(dir) {
+                let _ = Command::new(program).args(args).spawn();
             }
         }
     }
@@ -4074,8 +4074,8 @@ impl OpenSquirrel {
                         let dir = if idx < this.agents.len() {
                             this.agents[idx].working_dir.clone()
                         } else { String::new() };
-                        if !dir.is_empty() {
-                            let _ = Command::new("open").arg("-a").arg("Terminal").arg(&dir).spawn();
+                        if let Some((program, args)) = terminal_open_command(&dir) {
+                            let _ = Command::new(program).args(args).spawn();
                         }
                     }))
             );
@@ -5268,11 +5268,7 @@ impl OpenSquirrel {
     }
 
     fn transcript_font(&self) -> SharedString {
-        if self.config.terminal_text {
-            self.font_family.clone().into()
-        } else {
-            SharedString::from("Helvetica Neue")
-        }
+        SharedString::from(line_reader_font_family(self.config.terminal_text, &self.font_family))
     }
 
     fn render_top_bar(&self, cx: &mut Context<Self>) -> impl IntoElement + use<'_> {

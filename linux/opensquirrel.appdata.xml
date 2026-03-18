@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.Infatoshi.OpenSquirrel.desktop</id>
+  <metadata_license>MIT</metadata_license>
+  <project_license>MIT</project_license>
+  <name>OpenSquirrel</name>
+  <developer id="io.github.infatoshi">
+    <name>Infatoshi</name>
+  </developer>
+  <summary>Native control plane for AI coding agents</summary>
+  <description>
+    <p>OpenSquirrel is a native Rust desktop app for running AI coding agents side by side with persistent sessions, remote machine targets, and structured transcript rendering.</p>
+  </description>
+  <launchable type="desktop-id">io.github.Infatoshi.OpenSquirrel.desktop</launchable>
+  <categories>
+    <category>Development</category>
+  </categories>
+  <url type="homepage">https://github.com/Infatoshi/OpenSquirrel</url>
+  <content_rating type="oars-1.1"/>
+</component>

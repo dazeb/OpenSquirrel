@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=OpenSquirrel
+Comment=Native control plane for AI coding agents
+Exec=opensquirrel
+Icon=opensquirrel
+Terminal=false
+Categories=Development;
+Keywords=AI;Coding;Agents;Terminal;Rust;
+StartupNotify=true
+StartupWMClass=OpenSquirrel
