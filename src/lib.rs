@@ -356,6 +356,54 @@ pub fn line_reader_font_family(terminal_text: bool, configured_font: &str) -> St
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SetupNavStep {
+    Machine,
+    Directory,
+    Runtime,
+    Model,
+    Mcps,
+    Confirm,
+}
+
+pub fn can_click_setup_step(current: SetupNavStep, target: SetupNavStep) -> bool {
+    use SetupNavStep::*;
+
+    let order = |step| match step {
+        Machine => 0,
+        Directory => 1,
+        Runtime => 2,
+        Model => 3,
+        Mcps => 4,
+        Confirm => 5,
+    };
+
+    order(target) <= order(current)
+}
+
+pub fn setup_primary_button_label(step: SetupNavStep, editing_existing: bool) -> &'static str {
+    use SetupNavStep::*;
+
+    match step {
+        Confirm if editing_existing => "Apply",
+        Confirm => "Create Agent",
+        _ => "Next",
+    }
+}
+
+pub fn setup_navigation_hint(step: SetupNavStep) -> &'static str {
+    use SetupNavStep::*;
+
+    match step {
+        Machine => "Click a machine or use arrows. Tab continues.",
+        Directory => "Click a directory or use arrows. Enter opens. Tab confirms.",
+        Runtime => "Click a runtime or use arrows. Tab continues.",
+        Model => "Click a model or use arrows. Type to filter.",
+        Mcps => "Click to toggle MCPs or use Space. Tab continues.",
+        Confirm => "Review with mouse or keyboard. Enter confirms.",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -557,5 +605,35 @@ mod tests {
         assert_eq!(shell_escape("hello"), "'hello'");
         assert_eq!(shell_escape("it'a"), "'it'\"'\"'a'");
         assert_eq!(shell_escape(""), "''");
+    }
+
+    #[test]
+    fn test_can_click_setup_step_only_backwards_or_current() {
+        assert!(can_click_setup_step(SetupNavStep::Model, SetupNavStep::Runtime));
+        assert!(can_click_setup_step(SetupNavStep::Model, SetupNavStep::Model));
+        assert!(!can_click_setup_step(SetupNavStep::Model, SetupNavStep::Confirm));
+    }
+
+    #[test]
+    fn test_setup_primary_button_label() {
+        assert_eq!(setup_primary_button_label(SetupNavStep::Machine, false), "Next");
+        assert_eq!(setup_primary_button_label(SetupNavStep::Confirm, false), "Create Agent");
+        assert_eq!(setup_primary_button_label(SetupNavStep::Confirm, true), "Apply");
+    }
+
+    #[test]
+    fn test_setup_navigation_hint_mentions_click_targets() {
+        assert_eq!(
+            setup_navigation_hint(SetupNavStep::Machine),
+            "Click a machine or use arrows. Tab continues."
+        );
+        assert_eq!(
+            setup_navigation_hint(SetupNavStep::Directory),
+            "Click a directory or use arrows. Enter opens. Tab confirms."
+        );
+        assert_eq!(
+            setup_navigation_hint(SetupNavStep::Confirm),
+            "Review with mouse or keyboard. Enter confirms."
+        );
     }
 }

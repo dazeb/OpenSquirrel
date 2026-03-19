@@ -1239,6 +1239,19 @@ impl AgentState {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum SetupStep { Machine, Directory, Runtime, Model, Mcps, Confirm }
 
+impl SetupStep {
+    fn to_nav(self) -> SetupNavStep {
+        match self {
+            SetupStep::Machine => SetupNavStep::Machine,
+            SetupStep::Directory => SetupNavStep::Directory,
+            SetupStep::Runtime => SetupNavStep::Runtime,
+            SetupStep::Model => SetupNavStep::Model,
+            SetupStep::Mcps => SetupNavStep::Mcps,
+            SetupStep::Confirm => SetupNavStep::Confirm,
+        }
+    }
+}
+
 struct SetupState {
     step: SetupStep,
     runtime_cursor: usize,
@@ -1314,9 +1327,10 @@ struct SearchResult {
 
 // ── Diff classification (re-exported from lib.rs for tests) ─────
 use opensquirrel::{
-    build_persistent_runtime_args, classify_line, extract_latest_turn_output, LineKind,
+    build_persistent_runtime_args, can_click_setup_step, classify_line, extract_latest_turn_output, LineKind,
     line_reader_font_family, parse_bullet, parse_code_fence, parse_heading, parse_session_prompt,
-    parse_spans, shell_escape, summarize_diff, terminal_open_command, DiffSummary, Span,
+    parse_spans, setup_navigation_hint, setup_primary_button_label, shell_escape, summarize_diff, terminal_open_command,
+    DiffSummary, SetupNavStep, Span,
 };
 
 // ── Groups ──────────────────────────────────────────────────────
@@ -4606,6 +4620,9 @@ impl OpenSquirrel {
         let setup = self.setup.as_ref().unwrap();
         let t = &self.theme;
 
+        let row_hover_bg = t.surface_raised();
+        let row_hover_accent = t.blue_muted();
+
         let mut w = div()
             .absolute().top(self.s(80.0)).left(self.s(350.0)).w(self.s(600.0))
             .bg(t.palette_bg()).border_1().border_color(t.palette_border())
@@ -4633,9 +4650,31 @@ impl OpenSquirrel {
         for (label, step) in &steps {
             let active = setup.step == *step;
             let c = if active { t.blue() } else { t.text_faint() };
-            step_row = step_row.child(div().text_size(self.s(12.0)).text_color(c).child(
-                if active { format!("> {}", label) } else { label.to_string() }
-            ));
+            let target_step = *step;
+            let clickable = can_click_setup_step(setup.step.to_nav(), target_step.to_nav());
+            step_row = step_row.child(
+                div()
+                    .id(ElementId::Name(format!("setup-step-{}", label).into()))
+                    .px(self.s(4.0)).py(self.s(2.0))
+                    .rounded(self.s(4.0))
+                    .cursor_pointer()
+                    .when(clickable, |el| {
+                        el.hover(|s| s.bg(row_hover_bg).text_color(t.text()))
+                    })
+                    .text_size(self.s(12.0)).text_color(c)
+                    .child(if active { format!("> {}", label) } else { label.to_string() })
+                    .on_click(cx.listener(move |this, _event, _window, cx| {
+                        let current = this.setup.as_ref().map(|s| s.step.to_nav());
+                        if let Some(current) = current {
+                            if can_click_setup_step(current, target_step.to_nav()) {
+                                if let Some(ref mut s) = this.setup {
+                                    s.step = target_step;
+                                }
+                                cx.notify();
+                            }
+                        }
+                    }))
+            );
         }
         w = w.child(step_row);
 
@@ -4643,14 +4682,16 @@ impl OpenSquirrel {
         match setup.step {
             SetupStep::Runtime => {
                 w = w.child(div().px(self.s(14.0)).py(self.s(8.0)).text_size(self.s(11.0)).text_color(t.text_muted())
-                    .child("Select runtime (arrows to move, Tab to continue)"));
+                    .child(setup_navigation_hint(SetupNavStep::Runtime)));
                 for (i, rt) in self.config.runtimes.iter().enumerate() {
                     let sel = i == setup.runtime_cursor;
                     w = w.child(
                         div().id(ElementId::Name(format!("srt-{}", i).into()))
                             .w_full().px(self.s(14.0)).py(self.s(6.0))
                             .cursor_pointer()
+                            .border_l_2().border_color(if sel { row_hover_accent } else { rgba(0x00000000) })
                             .bg(if sel { t.selected_row() } else { rgba(0x00000000) })
+                            .hover(|s| s.bg(row_hover_bg).border_color(row_hover_accent))
                             .flex().items_center().gap(self.s(10.0))
                             .child(div().text_size(self.s(13.0)).text_color(if sel { t.blue() } else { t.text_faint() })
                                 .child(if sel { ">" } else { " " }))
@@ -4775,7 +4816,9 @@ impl OpenSquirrel {
                             div().id(ElementId::Name(format!("smd-{}", list_idx).into()))
                                 .w_full().px(self.s(14.0)).py(self.s(4.0))
                                 .cursor_pointer()
+                                .border_l_2().border_color(if sel { row_hover_accent } else { rgba(0x00000000) })
                                 .bg(if sel { t.selected_row() } else { rgba(0x00000000) })
+                                .hover(|s| s.bg(row_hover_bg).border_color(row_hover_accent))
                                 .flex().items_center().gap(self.s(10.0)).overflow_hidden()
                                 .child(div().text_size(self.s(12.0)).text_color(if sel { t.blue() } else { t.text_faint() })
                                     .child(if sel { ">" } else { " " }))
@@ -4802,7 +4845,7 @@ impl OpenSquirrel {
             }
             SetupStep::Machine => {
                 w = w.child(div().px(self.s(14.0)).py(self.s(8.0)).text_size(self.s(11.0)).text_color(t.text_muted())
-                    .child("Select machine target (arrows to move, Tab to continue)"));
+                    .child(setup_navigation_hint(SetupStep::Machine.to_nav())));
                 for (i, machine) in self.config.machines.iter().enumerate() {
                     let sel = i == setup.machine_cursor;
                     let detail = if machine.kind == "ssh" {
@@ -4811,16 +4854,28 @@ impl OpenSquirrel {
                         "local".to_string()
                     };
                     w = w.child(
-                        div().w_full().px(self.s(14.0)).py(self.s(6.0))
+                        div().id(ElementId::Name(format!("smc-{}", i).into())).w_full().px(self.s(14.0)).py(self.s(6.0))
                             .cursor_pointer()
+                            .border_l_2().border_color(if sel { row_hover_accent } else { rgba(0x00000000) })
                             .bg(if sel { t.selected_row() } else { rgba(0x00000000) })
+                            .hover(|s| s.bg(row_hover_bg).border_color(row_hover_accent))
                             .flex().items_center().gap(self.s(10.0))
                             .child(div().text_size(self.s(13.0)).text_color(if sel { t.blue() } else { t.text_faint() })
                                 .child(if sel { ">" } else { " " }))
                             .child(div().text_size(self.s(13.0)).text_color(if sel { t.text() } else { t.text_muted() })
                                 .child(machine.name.clone()))
                             .child(div().flex_grow())
-                            .child(div().text_size(self.s(11.0)).text_color(t.text_faint()).child(detail)),
+                            .child(div().text_size(self.s(11.0)).text_color(t.text_faint()).child(detail))
+                            .on_click(cx.listener(move |this, _event, _window, cx| {
+                                let machine_name = this.config.machines.get(i)
+                                    .map(|m| m.name.clone())
+                                    .unwrap_or_else(|| "local".into());
+                                if let Some(ref mut s) = this.setup {
+                                    s.machine_cursor = i;
+                                    s.selected_machine = machine_name;
+                                }
+                                cx.notify();
+                            })),
                     );
                 }
             }
@@ -4838,7 +4893,7 @@ impl OpenSquirrel {
                         .child(div().text_size(self.s(11.0)).text_color(t.text_muted()).child("cwd:"))
                         .child(div().text_size(self.s(12.0)).text_color(t.text()).child(current_display))
                         .child(div().flex_grow())
-                        .child(div().text_size(self.s(9.0)).text_color(t.text_faint()).child("Enter=open  ⌫=parent  Tab=confirm"))
+                        .child(div().text_size(self.s(9.0)).text_color(t.text_faint()).child(setup_navigation_hint(SetupStep::Directory.to_nav())))
                 );
                 // Filter bar
                 w = w.child(
@@ -4868,14 +4923,27 @@ impl OpenSquirrel {
                         format!("~{}", &dir[home.len()..])
                     } else { dir.clone() };
                     w = w.child(
-                        div().w_full().px(self.s(14.0)).py(self.s(4.0))
+                        div().id(ElementId::Name(format!("sdir-{}", list_idx).into())).w_full().px(self.s(14.0)).py(self.s(4.0))
+                            .cursor_pointer()
+                            .border_l_2().border_color(if sel { row_hover_accent } else { rgba(0x00000000) })
                             .bg(if sel { t.selected_row() } else { rgba(0x00000000) })
+                            .hover(|s| s.bg(row_hover_bg).border_color(row_hover_accent))
                             .flex().items_center().gap(self.s(10.0)).overflow_hidden()
                             .child(div().text_size(self.s(12.0)).text_color(if sel { t.blue() } else { t.text_faint() })
                                 .child(if sel { ">" } else { " " }))
                             .child(div().flex_shrink().min_w(px(0.)).text_size(self.s(12.0))
                                 .text_color(if sel { t.text() } else { t.text_muted() })
-                                .child(display)),
+                                .child(display))
+                            .on_click(cx.listener(move |this, _event, _window, cx| {
+                                if let Some(ref mut s) = this.setup {
+                                    let filtered = Self::filter_dirs(&s.dir_entries, &s.dir_filter);
+                                    if let Some(dir) = filtered.get(list_idx).cloned() {
+                                        s.dir_cursor = list_idx;
+                                        s.selected_dir = dir;
+                                    }
+                                }
+                                cx.notify();
+                            })),
                     );
                 }
                 if filtered.len() > visible_count {
@@ -4885,15 +4953,18 @@ impl OpenSquirrel {
             }
             SetupStep::Mcps => {
                 w = w.child(div().px(self.s(14.0)).py(self.s(8.0)).text_size(self.s(11.0)).text_color(t.text_muted())
-                    .child("Toggle MCPs (Space to toggle, Tab to continue)"));
+                    .child(setup_navigation_hint(SetupStep::Mcps.to_nav())));
                 for (i, mcp) in self.config.mcps.iter().enumerate() {
                     let cursor = i == setup.mcp_cursor;
                     let checked = setup.selected_mcps.get(i).copied().unwrap_or(false);
                     let checkbox = if checked { "[x]" } else { "[ ]" };
                     let locked = mcp.global;
                     w = w.child(
-                        div().w_full().px(self.s(14.0)).py(self.s(6.0))
+                        div().id(ElementId::Name(format!("smcp-{}", i).into())).w_full().px(self.s(14.0)).py(self.s(6.0))
+                            .cursor_pointer()
+                            .border_l_2().border_color(if cursor { row_hover_accent } else { rgba(0x00000000) })
                             .bg(if cursor { t.selected_row() } else { rgba(0x00000000) })
+                            .hover(|s| s.bg(row_hover_bg).border_color(row_hover_accent))
                             .flex().items_center().gap(self.s(10.0))
                             .child(div().text_size(self.s(13.0)).text_color(
                                 if checked { t.green() } else { t.text_faint() }
@@ -4904,11 +4975,23 @@ impl OpenSquirrel {
                             .child(div().flex_grow())
                             .child(div().text_size(self.s(11.0)).text_color(t.text_faint()).child(
                                 if locked { format!("{} (global)", mcp.description) } else { mcp.description.clone() }
-                            )),
+                            ))
+                            .on_click(cx.listener(move |this, _event, _window, cx| {
+                                let is_global = this.config.mcps.get(i).map(|m| m.global).unwrap_or(false);
+                                if let Some(ref mut s) = this.setup {
+                                    s.mcp_cursor = i;
+                                    if i < s.selected_mcps.len() && !is_global {
+                                        s.selected_mcps[i] = !s.selected_mcps[i];
+                                    }
+                                }
+                                cx.notify();
+                            })),
                     );
                 }
             }
             SetupStep::Confirm => {
+                w = w.child(div().px(self.s(14.0)).py(self.s(8.0)).text_size(self.s(11.0)).text_color(t.text_muted())
+                    .child(setup_navigation_hint(SetupStep::Confirm.to_nav())));
                 let rt_name = &setup.selected_runtime;
                 let model_name = if setup.selected_model.is_empty() { "default".to_string() } else { setup.selected_model.clone() };
                 let machine_name = if setup.selected_machine.is_empty() { "local".to_string() } else { setup.selected_machine.clone() };
@@ -4962,13 +5045,56 @@ impl OpenSquirrel {
             }
         }
 
-        // Bottom hint
+        // Bottom hint + mouse actions
+        let primary_label = setup_primary_button_label(setup.step.to_nav(), setup.editing_agent.is_some());
+        let show_back = setup.step != SetupStep::Machine;
         w = w.child(
             div().w_full().px(self.s(14.0)).py(self.s(8.0)).border_t_1().border_color(t.palette_border())
-                .flex().gap(self.s(16.0))
-                .child(div().text_size(self.s(11.0)).text_color(t.text_faint()).child("Tab: next"))
-                .child(div().text_size(self.s(11.0)).text_color(t.text_faint()).child("Shift-Tab: back"))
-                .child(div().text_size(self.s(11.0)).text_color(t.text_faint()).child("Esc: cancel")),
+                .flex().items_center().justify_between()
+                .child(
+                    div().flex().gap(self.s(16.0))
+                        .child(div().text_size(self.s(11.0)).text_color(t.text_faint()).child("Tab: next"))
+                        .child(div().text_size(self.s(11.0)).text_color(t.text_faint()).child("Shift-Tab: back"))
+                        .child(div().text_size(self.s(11.0)).text_color(t.text_faint()).child("Esc: cancel"))
+                )
+                .child(
+                    div().flex().gap(self.s(8.0))
+                        .child(
+                            div().id("setup-cancel").px(self.s(10.0)).py(self.s(6.0)).rounded(self.s(6.0))
+                                .cursor_pointer()
+                                .bg(t.surface_raised())
+                                .hover(|s| s.bg(t.selected_row()))
+                                .text_size(self.s(12.0)).text_color(t.text())
+                                .child("Cancel")
+                                .on_click(cx.listener(|this, _event, _window, cx| {
+                                    this.enter_command_mode(&EnterCommandMode, _window, cx);
+                                }))
+                        )
+                        .when(show_back, |row| {
+                            row.child(
+                                div().id("setup-back").px(self.s(10.0)).py(self.s(6.0)).rounded(self.s(6.0))
+                                    .cursor_pointer()
+                                    .bg(t.surface_raised())
+                                    .hover(|s| s.bg(t.selected_row()))
+                                    .text_size(self.s(12.0)).text_color(t.text())
+                                    .child("Back")
+                                    .on_click(cx.listener(|this, _event, _window, cx| {
+                                        this.setup_prev(&SetupPrev, _window, cx);
+                                    }))
+                            )
+                        })
+                        .child(
+                            div().id("setup-next").px(self.s(10.0)).py(self.s(6.0)).rounded(self.s(6.0))
+                                .cursor_pointer()
+                                .bg(t.blue())
+                                .hover(|s| s.opacity(0.92))
+                                .text_size(self.s(12.0)).text_color(rgba(0xffffffff))
+                                .child(primary_label)
+                                .on_click(cx.listener(|this, _event, _window, cx| {
+                                    this.setup_next(&SetupNext, _window, cx);
+                                }))
+                        )
+                ),
         );
         let epoch = self.mode_epoch;
         w.with_animation(
